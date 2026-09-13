@@ -1,0 +1,9 @@
+# 这是 API Key 说明文件（PC 脚本会读取同目录下的 stt_key.txt）
+#
+# 使用步骤：
+#   1. 把本文件复制一份，重命名为 stt_key.txt
+#   2. 打开 stt_key.txt，把下面这行整行替换成你自己的 API Key（只放一行，前后不要有其它内容）
+#   3. 申请地址：https://cloud.siliconflow.cn （新用户有免费额度）
+#
+# 你在硅基流动或者其它平台申请的 API Key：
+sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

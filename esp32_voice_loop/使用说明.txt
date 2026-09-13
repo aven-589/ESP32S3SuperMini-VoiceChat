@@ -1,0 +1,178 @@
+========================================================================
+ESP32 语音助手 使用说明
+麦(INMP441) -> 识别 -> 大模型(opencode-go) -> 晓晓TTS -> 喇叭(MAX98357)
+========================================================================
+
+一、项目文件
+------------------------------------------------------------------------
+E:\opencode\esp32_voice_loop\
+  esp32_voice\esp32_voice.ino           串口版固件(接电脑用)
+  esp32_voice_wifi\esp32_voice_wifi.ino 全WiFi版固件(脱电脑, 独立跑)
+  llm_client.py                 大模型客户端(自动读opencode-go的key)
+  stt_client.py                 云STT客户端(自动读 stt_key.txt)
+  stt_key.txt                   硅基流动的API Key(别外传!)
+  pc_llm_test.py                测试1: 大模型单独测试(不接硬件)
+  pc_stt_cloud_test.py          测试0: 云STT单独测试(不接硬件)
+  test_zh.wav                   测试音频("今天天气不错...")
+  pc_voice_assistant.py         测试2/3/4: 语音助手主脚本(三种模式)
+  使用说明.txt                   本文件
+
+  识别方案: 默认走云端 硅基流动 TeleAI/TeleSpeechASR (约1秒, 准)
+           本地whisper small 留作备用: 加 --stt local
+
+二、硬件接线(已经接好的不用动)
+------------------------------------------------------------------------
+INMP441 麦克风:
+  VDD -> 3.3V    GND -> GND
+  SD  -> GPIO6   WS  -> GPIO5    SCK -> GPIO4    L/R -> GND
+
+MAX98357A 功放:
+  VIN -> 5V      GND -> GND
+  DIN -> GPIO7   BCLK -> GPIO4(和麦SCK并联)   LRC -> GPIO5(和麦WS并联)
+  SD  -> GPIO8   GAIN -> GND(最小增益)
+
+三、使用前检查(每次开电脑后)
+------------------------------------------------------------------------
+1. 代理开着(必备! opencode.ai 是境外接口, 走 127.0.0.1:7897)
+2. Arduino 串口监视器关掉(COM口一次只能一个程序用)
+3. 不要同时跑两个占用 COM23 的脚本
+
+四、烧录固件(只在固件有更新时才需要)
+------------------------------------------------------------------------
+1. Arduino IDE 打开 esp32_voice\esp32_voice.ino
+2. 板子选 ESP32S3
+3. 工具菜单里 USB CDC On Boot 必须 = 启用  (关键! 选错就完全没反应)
+4. 点上传
+5. 上传后串口监视器(921600)应看到:
+     === ESP32-S3 语音助手固件 (录音R/S/Q + 播放A + 静音M) ===
+     READY voice fw. R<sec> | S/Q | A<len> | M0/M1
+
+   说明: 这个二合一固件是"超集", 旧的demo脚本全兼容, 不用再换固件
+
+五、测试步骤(从小到大, 出问题好定位)
+------------------------------------------------------------------------
+【测试0】云STT识别测试(不接硬件)
+  E:\faster-whisper\venv\Scripts\python.exe E:\opencode\esp32_voice_loop\pc_stt_cloud_test.py
+  预期: [识别] 耗时约1s, [结果] 今天天气不错... [OK]
+  失败: 报401=key不对; 网络错误=网络问题
+
+【测试1】大模型单测(不接硬件, 不占COM口)
+  E:\faster-whisper\venv\Scripts\python.exe E:\opencode\esp32_voice_loop\pc_llm_test.py
+  预期: [回复] 你好，我是一个... [OK] 大模型通信正常
+  失败: 检查代理是否开着; 报401是key问题
+
+【测试2】文字 -> 大模型 -> 喇叭(单次, 不接麦)
+  E:\faster-whisper\venv\Scripts\python.exe E:\opencode\esp32_voice_loop\pc_voice_assistant.py --say "你好" --port COM23
+  预期: 自动发送"你好" -> 大模型回复 -> 喇叭念出来 -> 脚本退出
+
+【测试3】打字聊天 -> 喇叭(想聊几句用这个)
+  E:\faster-whisper\venv\Scripts\python.exe E:\opencode\esp32_voice_loop\pc_voice_assistant.py --text-chat --port COM23
+  用法: 输入一句话回车 -> 喇叭答一句; 直接回车或Ctrl+C退出
+
+【测试4】全链路: 麦 -> 识别 -> 大模型 -> 喇叭
+  E:\faster-whisper\venv\Scripts\python.exe E:\opencode\esp32_voice_loop\pc_voice_assistant.py --port COM23
+  用法: 对着麦说一句话, 停顿1秒左右, 自动识别+回答+喇叭念
+       Ctrl+C 退出
+  说明: 识别默认走云(约1秒); 想用本地whisper: 加 --stt local
+
+六、测试4的调参(识别不灵时)
+------------------------------------------------------------------------
+  识别切不出句子/总是没听清 -> 门限调低:
+    ... pc_voice_assistant.py --port COM23 --thresh 300
+  环境吵, 乱触发 -> 门限调高、静音加长:
+    ... pc_voice_assistant.py --port COM23 --thresh 600 --silence 1.0
+  回答太长念太久 -> 限制字数:
+    ... pc_voice_assistant.py --port COM23 --maxlen 80
+  换音色/语速:
+    --voice zh-CN-YunxiNeural (男声云希)   --rate +10% (快10%)
+
+七、之前的demo(都还能用, 和这个项目共用COM23)
+------------------------------------------------------------------------
+【麦克风老demo】E:\opencode\esp32_mic_to_pc\
+  电平表(先验麦克风有没有声):
+    E:\faster-whisper\venv\Scripts\python.exe E:\opencode\esp32_mic_to_pc\pc_level_meter.py --port COM23 --dur 10
+  录5秒转文字:
+    E:\faster-whisper\venv\Scripts\python.exe E:\opencode\esp32_mic_to_pc\pc_stt_demo.py --port COM23 --dur 5
+  常听常识别(只出字, 不接大模型):
+    E:\faster-whisper\venv\Scripts\python.exe E:\opencode\esp32_mic_to_pc\pc_stt_stream.py --port COM23
+  说明: 识别模型已改成small; 用新二合一固件跑这些老脚本完全兼容
+
+【剪贴板老demo】E:\opencode\esp32_speak_pc\
+  复制什么文字就念什么:
+    E:\faster-whisper\venv\Scripts\python.exe E:\opencode\esp32_speak_pc\pc_speak_clip.py --port COM23
+  也能用新固件直接跑
+
+八、常见问题
+------------------------------------------------------------------------
+1. 打不开 COM23
+   -> 有别的程序占用(串口监视器/另一个脚本), 关掉重试
+   -> 看设备管理器确认板子插好
+
+2. 脚本报 "板子里不是二合一固件"
+   -> 重新烧 esp32_voice.ino, 检查 USB CDC On Boot = 启用
+
+3. 喇叭没声音/全是沙沙声
+   -> 检查 MAX98357 接线(尤其GND共地、SD=GPIO8、GAIN=GND)
+   -> 先用测试2验证, 能出声说明硬件OK
+
+4. 识别老是"没听清"
+   -> 看[电平]行, 安静rms和说话rms取中间值作 --thresh
+   -> 说话离麦近一点, 别对着喇叭(会互相干扰)
+
+5. 大模型报错
+   -> 网络错误: 代理没开(必须开着)
+   -> HTTP 401: opencode key问题
+   -> 限流: 等一会儿再试
+
+6. 识别/回答太慢
+   -> 正常: small模型识别2~3秒+大模型2~5秒, 整轮约6~10秒
+   -> 想快可换 base 模型: --model base
+
+九、语音助手的工作流程(原理一句话)
+------------------------------------------------------------------------
+半双工: 听的时候喇叭不喂数据=静音; 放的时候先停麦克风流,
+放完等1秒余音散掉再开麦 -> 不会自己听自己说话
+
+十、全WiFi版(脱电脑独立跑) - esp32_voice_wifi.ino
+------------------------------------------------------------------------
+功能: ESP32自己连WiFi, 直接调云端(硅基流动全家桶):
+  识别 TeleSpeechASR + 大模型 DeepSeek-V3 + 合成 CosyVoice2
+  没有电脑什么事, 插个充电头就能用
+
+【第一次用】
+1. Arduino IDE 打开 esp32_voice_wifi\esp32_voice_wifi.ino
+2. 改开头两行: WIFI_SSID 和 WIFI_PASS (必须是2.4G网络!)
+   (API_KEY 要换成你自己的: 在硅基流动 cloud.siliconflow.cn 申请;
+    音色默认claire女声, 可换 anna/bella/diana/alex等)
+3. 【重要】工具菜单里设这两项(板子实测: 4MB Flash + 2MB PSRAM;
+   商品页写16MB Flash是虚标, 别设16M, 会启动不了):
+     PSRAM:      QSPI PSRAM   (默认是Disabled, 不改就只能用片内SRAM)
+     Flash Size: 4MB (32Mb)
+   USB CDC On Boot 保持=启用
+4. 烧录
+5. 烧完可以直接拔下来插5V2A充电头独立跑;
+   插电脑上则串口监视器(115200)可以看日志
+
+【用法】
+通电 -> 等日志出现 [就绪] -> 对着麦说一句话 -> 停顿0.7秒
+-> 自动: 识别 -> 大模型 -> 喇叭念出来 -> 继续听
+
+【日志参照】
+  [内存] 无PSRAM, 可录X秒 (free heap Y)   <- 看看实际能录几秒
+  [听] 说话吧...
+  [电平] 安静rms~xx                      <- 每3秒一条, 说话时应明显高于它
+  [听] 检测到说话, 开始录音...
+  [听] 录完 x.x秒
+  [识别] xxx (x.xs)
+  [回复] xxx (x.xs)
+  [TTS] 播完 (x.xs)
+
+【注意】
+- 必须2.4G WiFi, 5G连不上
+- 识别/大模型/TTS都有网络延迟, 整轮约5~8秒, 比串口版慢一点点
+- 喇叭音色变了: 微软晓晓换成了CosyVoice2的claire(温柔女声)
+  ESP32上跑不了微软TTS; 要换音色改 TTS_VOICE 一行
+- 没有对话上下文(每句独立), 串口版才有
+- 供电: 插USB3.0口或5V2A充电头; 功放5V直供
+- 门限不灵时改 VAD_THRESH (400), 环境吵调高, 识别不到调低
+- 大模型是收费的(DeepSeek-V3, 每轮约几厘钱), 识别和TTS免费
