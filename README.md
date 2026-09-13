@@ -1,0 +1,2 @@
+# ESP32S3SuperMini-VoiceChat
+基于ESP32S3 SuperMini制作一个实时语音对话机器人
